@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>去中心化校园论坛</title>
+    <link rel="stylesheet" href="/static/css/style.css" />
+</head>
+<body>
+    <div id="app">
+        <!-- 顶部导航 -->
+        <header class="header">
+            <div class="container">
+                <h1>🏫 去中心化校园论坛</h1>
+                <p class="subtitle">AI 自动审核 · 无管理员 · 公开透明</p>
+            </div>
+        </header>
+
+        <!-- 主内容 -->
+        <main class="container">
+            <!-- 发帖表单 -->
+            <section class="post-form-section">
+                <form id="postForm">
+                    <div class="form-group">
+                        <label for="postContent">发布新帖子</label>
+                        <textarea id="postContent" rows="3" placeholder="写点什么..." required></textarea>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="postNickname">昵称</label>
+                            <input type="text" id="postNickname" placeholder="匿名" />
+                        </div>
+                        <button type="submit" id="submitBtn">发布</button>
+                    </div>
+                </form>
+            </section>
+
+            <!-- 帖子列表 -->
+            <section class="posts-section">
+                <div class="section-header">
+                    <h2>最新帖子</h2>
+                    <span id="postCount">0 条</span>
+                </div>
+                <div id="postList">
+                    <div class="loading">加载中...</div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- 帖子详情弹窗 -->
+    <div id="postModal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modalTitle">帖子详情</h3>
+                <button id="modalClose">&times;</button>
+            </div>
+            <div id="modalBody"></div>
+        </div>
+    </div>
+
+    <script src="/static/js/websocket.js"></script>
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

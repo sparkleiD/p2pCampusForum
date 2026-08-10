@@ -1,0 +1,46 @@
+# ============================================================
+# 去中心化校园论坛 - Python 依赖清单
+# Python 3.11 + Windows / macOS / Linux 通用
+# 安装命令: pip install -r requirements.txt
+# ============================================================
+
+# ---------- P2P 网络层 ----------
+# 用途: p2p/network.py, p2p/pubsub.py
+# 提供节点发现、PubSub 消息广播、P2P 通信能力
+libp2p>=0.5.0
+
+# ---------- mDNS 服务发现 ----------
+# 用途: p2p/discovery.py
+# 让三台电脑自动注册为 campusforum.local，手机无需记忆 IP
+zeroconf>=0.132.0
+
+# ---------- Web 框架层 ----------
+# 用途: web/server.py, web/routes/*.py
+# FastAPI: 提供 RESTful API（发帖、查帖、同步）
+# uvicorn: ASGI 服务器，用于运行 FastAPI 应用
+# websockets: WebSocket 实时推送（审核通过后自动刷新页面）
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+websockets>=12.0
+
+# ---------- api AI 审核层 ----------
+# 用途: ai/api/openai_compat_judge.py
+# openai 库支持所有 OpenAI 兼容格式的 API
+# 包括：DeepSeek、通义千问、智谱GLM、硅基流动等
+# 通过修改 config.py 中的 API_BASE_URL 和 API_MODEL_NAME 即可切换服务商
+openai>=1.50.0
+
+# ---------- 本地 AI 审核层 ----------
+# 用途: ai/local/ollama_judge.py
+# 调用本地 Ollama 服务，无需联网，完全免费
+# 需要先安装 Ollama 并下载模型：ollama pull qwen2.5:7b
+requests>=2.31.0
+
+# ---------- 工具库 ----------
+# 用途: web/routes/posts.py（解析表单数据）
+# 发帖时浏览器以 multipart/form-data 格式提交，需要此库解析
+python-multipart>=0.0.9
+
+# 用途: web/server.py（提供静态文件服务）
+# FastAPI 挂载 frontend/ 目录时需要异步文件操作
+aiofiles>=23.0.0
