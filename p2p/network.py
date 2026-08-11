@@ -3,29 +3,25 @@ libp2p Host 管理模块.
 """
 
 from libp2p import new_host
-from multiaddr import Multiaddr
-from config import P2P_PORT
+from libp2p.crypto.ed25519 import create_new_key_pair
+from libp2p.security.noise.transport import PROTOCOL_ID as NOISE_PROTOCOL_ID, Transport as NoiseTransport
 
+# 导入 Yamux 组件
+from libp2p.stream_muxer.yamux.yamux import Yamux
+from libp2p.custom_types import TProtocol
 
 async def create_host(port: int = None):
     """
-    创建并启动 libp2p Host.
+    创建 libp2p Host（不启动监听）。
 
     Args:
-        port: P2P 监听端口，默认使用 config.P2P_PORT
+        port: P2P 监听端口（仅用于日志，实际监听由 host.run() 控制）
 
     Returns:
-        已启动的 Host 实例
+        未启动的 Host 实例
     """
-    if port is None:
-        port = P2P_PORT
-
-    # 构造监听地址
-    listen_addr = Multiaddr(f"/ip4/0.0.0.0/tcp/{port}")
-
-    # new_host 返回的 Host 已经自动启动，不需要再调用 start()
-    host = new_host(listen_addrs=[listen_addr])
-
+    key_pair = create_new_key_pair()
+    host = new_host(key_pair=key_pair)
     return host
 
 

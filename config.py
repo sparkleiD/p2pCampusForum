@@ -23,6 +23,8 @@ AI_TIMEOUT = 30 #秒
 # mDNS服务名(便于手机发现)
 MDNS_SERVICE_NAME = "campusforum"
 MDNS_SERVICE_TYPE = "_http._tcp.local."
+# P2P服务名(便于节点发现)
+P2P_SERVICE_TYPE = "_p2p._tcp.local."
 
 # PubSub话题(节点之间通过这个话题广播新帖子)
 PUBSUB_TOPIC = "/campusforum/posts"

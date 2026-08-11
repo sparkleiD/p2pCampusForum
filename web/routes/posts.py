@@ -4,7 +4,7 @@
 """
 
 import uuid
-import asyncio
+from dataclasses import asdict
 from datetime import datetime
 from fastapi import APIRouter, Form, HTTPException, Request
 
@@ -76,7 +76,7 @@ async def create_post(
                 "nickname": nickname
             }
         )
-        pubsub.publish(msg.to_json())
+        await pubsub.publish(asdict(msg))
         print(f"📤 已广播审核请求: {post_id}")
     else:
         print(f"⚠️ P2P 未启用，仅使用本地审核: {post_id}")

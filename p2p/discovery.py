@@ -1,38 +1,40 @@
 import socket
-import asyncio
 import uuid
-from zeroconf import ServiceInfo, Zeroconf, ServiceListener
-from config import MDNS_SERVICE_NAME, MDNS_SERVICE_TYPE, WEB_PORT
+import trio
+from zeroconf import ServiceInfo, ServiceListener, Zeroconf
+
+from config import MDNS_SERVICE_NAME, MDNS_SERVICE_TYPE, WEB_PORT ,P2P_SERVICE_TYPE
 
 
 # ---------- 工具函数 ----------
 def _get_local_ip():
-    """获取本机有效的局域网 IPv4 地址（避免返回 127.0.0.1）"""
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.connect(('8.8.8.8', 80))
         ip = s.getsockname()[0]
         s.close()
+        print(f"[DISCOVERY] 🐞 _get_local_ip() 返回: {ip}")
         return ip
     except Exception:
         return socket.gethostbyname(socket.gethostname())
 
 
-# ---------- 唯一服务注册（每个节点独立） ----------
-async def async_register_mdns_service(port: int = None, service_name: str = None, peer_id: str = None):
-    """
-    注册一个带唯一后缀的服务实例，例如 campusforum-a3f9c2.local
+# ---------- 同步注册函数 ----------
+def _register_service_sync(info: ServiceInfo) -> Zeroconf:
+    zc = Zeroconf()
+    zc.register_service(info)
+    return zc
 
-    :param port:  Web 服务端口
-    :param service_name: 自定义服务名（若 None 则自动生成）
-    :param peer_id: P2P 节点 ID，用于生成唯一后缀
-    
-    :return: (Zeroconf 实例, 最终注册的服务名)
-    """
+
+# ---------- 异步包装（在线程中运行） ----------
+async def async_register_mdns_service(
+    port: int = None,
+    service_name: str = None,
+    peer_id: str = None
+):
     if port is None:
         port = WEB_PORT
 
-    # 构造唯一服务名
     if service_name is None:
         if peer_id:
             suffix = peer_id[-6:] if len(peer_id) >= 6 else peer_id
@@ -42,127 +44,126 @@ async def async_register_mdns_service(port: int = None, service_name: str = None
 
     ip = _get_local_ip()
     info = ServiceInfo(
-        MDNS_SERVICE_TYPE,                       # "_http._tcp.local."
-        f"{service_name}.{MDNS_SERVICE_TYPE}",  # "campusforum-a3f9c2._http._tcp.local."
+        MDNS_SERVICE_TYPE,
+        f"{service_name}.{MDNS_SERVICE_TYPE}",
         addresses=[socket.inet_aton(ip)],
         port=port,
         properties={"path": "/", "peer_id": peer_id or ""},
-        server=f"{service_name}.local."          # 关键：确保 A 记录正确绑定
+        server=f"{service_name}.local."
     )
 
-    zeroconf = Zeroconf()
-    await zeroconf.async_register_service(info)
-    print(f"✅ 唯一服务已注册: http://{service_name}.local:{port}")
-    print(f"   本机 IP: {ip}")
-    return zeroconf, service_name
+    zc = await trio.to_thread.run_sync(_register_service_sync, info)
+    print(f"[DISCOVERY] ✅ 唯一服务已注册: http://{service_name}.local:{port}")
+    print(f"[DISCOVERY]    本机 IP: {ip}")
+    return zc, service_name
 
 
-# ---------- 固定别名抢占（仅主节点） ----------
+# ---------- 固定别名注册 ----------
 async def async_register_alias_service(port: int = None):
-    """
-    尝试注册固定域名 campusforum.local（竞争主节点）
-
-    :param port: Web 端口
-    
-    :return: (Zeroconf 实例, 是否成功)
-    """
     if port is None:
         port = WEB_PORT
 
     ip = _get_local_ip()
-    alias_name = "campusforum"  # 固定短域名，不带后缀
-
     info = ServiceInfo(
         MDNS_SERVICE_TYPE,
-        f"{alias_name}.{MDNS_SERVICE_TYPE}",  # campusforum._http._tcp.local.
+        f"campusforum.{MDNS_SERVICE_TYPE}",
         addresses=[socket.inet_aton(ip)],
         port=port,
         properties={"path": "/", "is_leader": "true"},
-        server=f"{alias_name}.local."          # 绑定 A 记录到 campusforum.local.
+        server="campusforum.local."
     )
 
-    zeroconf = Zeroconf()
     try:
-        await zeroconf.async_register_service(info)
-        print(f"👑 成功抢占固定域名: http://{alias_name}.local:{port} (当前为主节点)")
-        return zeroconf, True
+        zc = await trio.to_thread.run_sync(_register_service_sync, info)
+        print(f"[DISCOVERY] 👑 成功抢占固定域名: http://campusforum.local:{port} (当前为主节点)")
+        return zc, True
     except Exception as e:
-        # 名字冲突，说明已有主节点
-        print(f"ℹ️ 固定域名已被占用，当前节点为备用节点 ({e})")
-        zeroconf.close()
+        print(f"[DISCOVERY] ℹ️ 固定域名已被占用，当前节点为备用节点 ({e})")
         return None, False
 
 
-# ---------- 监听器：检测主节点消失 ----------
+# ---------- 别名监听器（故障转移已禁用） ----------
 class AliasServiceListener(ServiceListener):
-    """监听 campusforum.local 的消失，触发抢占回调"""
-    def __init__(self, on_alias_lost_callback):
-        self.callback = on_alias_lost_callback
-
-    def add_service(self, zeroconf, service_type, name):
-        # 当服务出现时，不做特殊处理
+    def add_service(self, zc, type_, name):
         pass
-
-    def remove_service(self, zeroconf, service_type, name):
-        # 当固定域名被移除（主节点下线）时触发
+    def remove_service(self, zc, type_, name):
         if name == "campusforum._http._tcp.local.":
-            print("🔄 检测到主节点下线，触发抢占回调...")
-            asyncio.create_task(self.callback())
-
-    def update_service(self, zeroconf, service_type, name):
+            print("[DISCOVERY] 🔄 检测到主节点下线，但自动故障转移已禁用")
+    def update_service(self, zc, type_, name):
         pass
 
 
-# ---------- 封装：启动别名管理（抢占+故障转移） ----------
-async def setup_alias_with_failover(main_zeroconf: Zeroconf, port: int):
-    """
-    启动固定域名 campusforum.local 的抢占和故障转移
-    :param main_zeroconf: 主 Zeroconf 实例（用于监听）
-    :param port: Web 端口
-    :return: (is_leader, cleanup_function)
-    """
+async def setup_alias_with_failover(main_zc: Zeroconf, port: int):
     is_leader = False
-    alias_zeroconf = None
+    alias_zc = None
 
     async def try_become_leader():
-        nonlocal is_leader, alias_zeroconf
+        nonlocal is_leader, alias_zc
         if is_leader:
             return
-        zc, success = await async_register_alias_service(port=port)
+        zc, success = await async_register_alias_service(port)
         if success:
             is_leader = True
-            alias_zeroconf = zc
-            print("👑 当前节点已升级为主节点 (固定域名 campusforum.local)")
+            alias_zc = zc
+            print("[DISCOVERY] 👑 当前节点已升级为主节点 (固定域名 campusforum.local)")
 
-    async def on_leader_lost():
-        # 当主节点消失时，尝试抢占
-        await try_become_leader()
-
-    # 1. 首次抢占
     await try_become_leader()
 
-    # 2. 注册监听器
-    listener = AliasServiceListener(on_leader_lost)
-    main_zeroconf.add_service_listener("_http._tcp.local.", listener)
+    listener = AliasServiceListener()
+    main_zc.add_service_listener(MDNS_SERVICE_TYPE, listener)
 
-    # 3. 返回清理函数
     def cleanup():
-        nonlocal alias_zeroconf
-        if alias_zeroconf:
-            alias_zeroconf.close()
-        main_zeroconf.remove_service_listener(listener)
+        nonlocal alias_zc
+        if alias_zc:
+            alias_zc.close()
+        main_zc.remove_service_listener(listener)
 
     return is_leader, cleanup
 
 
-# ---------- 同步兼容（可选） ----------
-def register_mdns_service(port: int = None, service_name: str = None, peer_id: str = None):
-    """同步版本（兼容旧调用，不建议使用）"""
-    loop = asyncio.get_event_loop()
-    return loop.run_until_complete(async_register_mdns_service(port, service_name, peer_id))
+# ---------- P2P 节点发现 ----------
+async def async_register_p2p_service(port: int, peer_id: str):
+    ip = _get_local_ip()
+    info = ServiceInfo(
+        P2P_SERVICE_TYPE,
+        f"{peer_id[-8:]}.{P2P_SERVICE_TYPE}",
+        addresses=[socket.inet_aton(ip)],
+        port=port,
+        properties={"peer_id": peer_id},
+        server=f"{peer_id[-8:]}.local."
+    )
+    zc = await trio.to_thread.run_sync(_register_service_sync, info)
+    return zc
 
+import queue
 
-def unregister_mdns_service(zeroconf: Zeroconf):
-    if zeroconf:
-        zeroconf.unregister_all_services()
-        zeroconf.close()
+class P2PServiceListener(ServiceListener):
+    def __init__(self, host, p2p_port, addr_queue):
+        self.host = host
+        self.p2p_port = p2p_port
+        self.addr_queue = addr_queue   # queue.Queue
+        self.connected = set()
+
+    def add_service(self, zc, type_, name):
+        info = zc.get_service_info(type_, name)
+        if not info or not info.addresses:
+            return
+        ip = socket.inet_ntoa(info.addresses[0])
+        port = info.port
+        peer_id = info.properties.get(b"peer_id", b"").decode()
+        if port == self.p2p_port and ip == _get_local_ip():
+            return
+        addr_str = f"/ip4/{ip}/tcp/{port}/p2p/{peer_id}"
+        if addr_str not in self.connected:
+            try:
+                self.addr_queue.put(addr_str)
+                self.connected.add(addr_str)
+                print(f"[DISCOVERY] 🔍 发现邻居，已加入连接队列: {addr_str}")
+            except Exception as e:
+                print(f"[DISCOVERY] ⚠️ 无法将地址加入队列: {e}")
+
+    def remove_service(self, zc, type_, name):
+        pass
+
+    def update_service(self, zc, type_, name):
+        pass

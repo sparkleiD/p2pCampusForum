@@ -1,6 +1,6 @@
 # ============================================================
 # 去中心化校园论坛 - Python 依赖清单
-# Python 3.11 + Windows / macOS / Linux 通用
+# Python 3.11.9 + Windows / macOS / Linux 通用
 # 安装命令: pip install -r requirements.txt
 # ============================================================
 
@@ -12,15 +12,18 @@ libp2p>=0.5.0
 # ---------- mDNS 服务发现 ----------
 # 用途: p2p/discovery.py
 # 让三台电脑自动注册为 campusforum.local，手机无需记忆 IP
-zeroconf>=0.132.0
+mdns>=0.6.0
+anyio>=3.0.0   # mdns 依赖，但可显式锁定
 
 # ---------- Web 框架层 ----------
 # 用途: web/server.py, web/routes/*.py
 # FastAPI: 提供 RESTful API（发帖、查帖、同步）
-# uvicorn: ASGI 服务器，用于运行 FastAPI 应用
+# hypercorn: 异步 Web 服务器，支持 HTTP/2 和 WebSocket
+# trio: 异步协程库，hypercorn 依赖
 # websockets: WebSocket 实时推送（审核通过后自动刷新页面）
 fastapi>=0.115.0
-uvicorn[standard]>=0.30.0
+hypercorn>=0.14.0
+trio>=0.22.0
 websockets>=12.0
 
 # ---------- api AI 审核层 ----------
@@ -40,6 +43,9 @@ requests>=2.31.0
 # 用途: web/routes/posts.py（解析表单数据）
 # 发帖时浏览器以 multipart/form-data 格式提交，需要此库解析
 python-multipart>=0.0.9
+
+# 用途: config.py（加载 .env 环境变量）
+python-dotenv>=1.0.0
 
 # 用途: web/server.py（提供静态文件服务）
 # FastAPI 挂载 frontend/ 目录时需要异步文件操作

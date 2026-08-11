@@ -23,7 +23,7 @@ class MsgType:
     SYNC_REQUEST = "sync_request"         # 请求全量数据
     SYNC_RESPONSE = "sync_response"       # 返回全量数据
     
-    # 共识相关
+    # 共识相关(分布式共识，暂不用)
     CONSENSUS_REQUEST = "consensus_request"   # 请求参与共识投票
     CONSENSUS_VOTE = "consensus_vote"         # 投票结果
 
