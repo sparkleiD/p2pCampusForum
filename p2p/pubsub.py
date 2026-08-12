@@ -7,10 +7,12 @@ import base64
 from typing import Callable, Optional
 from libp2p.pubsub.gossipsub import GossipSub
 from libp2p.pubsub.pubsub import Pubsub
+from libp2p.custom_types import TProtocol
 from .router import MessageRouter
 from .protocol import MsgType
 from config import PUBSUB_TOPIC
 
+GOSSIPSUB_PROTOCOL_ID = TProtocol("/meshsub/1.0.0")
 
 class PubSubManager:
     """
@@ -22,17 +24,18 @@ class PubSubManager:
     def __init__(self, host, topic: str = None):
         self.host = host
         self.topic = topic or PUBSUB_TOPIC
-        self._pubsub: Optional[GossipSub] = None
+        self._pubsub: Optional[Pubsub] = None
+        self._gossipsub: Optional[GossipSub] = None   # 新增，用于启动服务
 
     def setup(self):
         """初始化 PubSub（Host 需已启动）"""
-        # 修正：用列表包装 host
         gossipsub = GossipSub(
-            protocols=[],
+            protocols=[GOSSIPSUB_PROTOCOL_ID],   # 必须指定协议 ID
             degree=3,
             degree_low=2,
             degree_high=6
         )
+        self._gossipsub = gossipsub
         self._pubsub = Pubsub(self.host, gossipsub)
         print(f"[PUBSUB] ✅ PubSub 已初始化 (GossipSub)，话题: {self.topic}")
 
@@ -50,14 +53,17 @@ class PubSubManager:
         """
         if not self._pubsub:
             raise RuntimeError("PubSub 未初始化，请先调用 setup()")
+        
+        # 获取本节点 PeerID 的两种形式：可读字符串用于日志，原始字节用于比较
+        my_peer_id_pretty = self.host.get_id().pretty()
+        my_peer_id_bytes = self.host.get_id().to_bytes()
+
         subscription = await self._pubsub.subscribe(self.topic)
         # 从 receive_channel 中迭代消息
         async for msg in subscription.receive_channel:
-
             try:
                 raw = msg.data.decode("utf-8")
                 data = json.loads(raw)
-                # 确保 data 是字典
                 if not isinstance(data, dict):
                     print(f"[PUBSUB] ⚠️ 收到非字典消息，忽略: {raw[:100]}")
                     continue
@@ -65,16 +71,18 @@ class PubSubManager:
                 print(f"[PUBSUB] ⚠️ 解析消息失败: {e}, 原始数据前50字符: {msg.data[:50]}")
                 continue
 
-            data = json.loads(msg.data.decode("utf-8"))
-            # 安全提取 sender_peer_id
-            if hasattr(msg.from_id, 'pretty'):
+            # 安全提取 sender_peer_id (msg.from_id 是 bytes)
+            if hasattr(msg.from_id, 'to_bytes'):
                 sender_peer_id = msg.from_id.pretty()
             else:
-                # 使用 base64 编码避免解码错误
                 sender_peer_id = base64.b64encode(msg.from_id).decode('ascii')
+
+            if msg.from_id == my_peer_id_bytes:
+                continue
             callback(data, sender_peer_id)
 
     def setup_router(self) -> Callable:
+        """注册所有消息处理器，返回路由函数"""
         router = MessageRouter()
 
         def handle_audit_request(data: dict, sender: str):
