@@ -25,7 +25,9 @@ p2pCampusForum/
 │   ├── network.py                   # libp2p Host 创建与管理
 │   ├── discovery.py                 # mDNS 服务注册（含固定域名抢占）
 │   ├── protocol.py                  # 消息格式定义（Message + MsgType）
-│   └── pubsub.py                    # PubSub 发布订阅（GossipSub）
+│   ├── pubsub.py                    # PubSub 发布订阅（GossipSub）
+│   ├── router.py                    # P2P 消息处理路由
+│   └── handler.py                   # P2P 消息处理回调函数集合
 │
 ├── storage/                         # 数据存储模块
 │   ├── __init__.py

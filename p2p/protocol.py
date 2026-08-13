@@ -72,16 +72,14 @@ class Message:
 # 1. AUDIT_REQUEST - 请求审核内容
 # payload = {
 #     "content_id": "post_xxx 或 comment_xxx",
-#     "content_type": "post" | "comment",
-#     "content": "待审核的文本内容"
+#     "content": "待审核的文本内容",
+#     "nickname": "昵称"
 # }
 
 # 2. AUDIT_RESPONSE - 返回审核结果
 # payload = {
 #     "content_id": "post_xxx 或 comment_xxx",
-#     "verdict": "pass" | "flag" | "reject",
-#     "reason": "判断理由",
-#     "confidence": 95
+#     "verdict": Verdict(verdict='pass', reason='调试用', confidence=100)
 # }
 
 # 3. POST_PUBLISH - 新帖子发布

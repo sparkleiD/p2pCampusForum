@@ -45,7 +45,7 @@ async def create_post(
         }
 
     # ========== 第3步：只有 pass 或 flag 才继续 ==========
-    post_id = str(uuid.uuid4())
+    post_id = "post_"+str(uuid.uuid4())
 
     # 保存帖子
     repo.save_post(post_id, content, nickname)

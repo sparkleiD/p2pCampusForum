@@ -3,7 +3,6 @@ PubSub 发布订阅模块.
 """
 
 import json
-import base64
 from typing import Callable, Optional
 from libp2p.pubsub.gossipsub import GossipSub
 from libp2p.pubsub.pubsub import Pubsub
@@ -11,6 +10,7 @@ from libp2p.custom_types import TProtocol
 from .router import MessageRouter
 from .protocol import MsgType
 from config import PUBSUB_TOPIC
+from . import handler
 
 GOSSIPSUB_PROTOCOL_ID = TProtocol("/meshsub/1.0.0")
 
@@ -33,7 +33,8 @@ class PubSubManager:
             protocols=[GOSSIPSUB_PROTOCOL_ID],   # 必须指定协议 ID
             degree=3,
             degree_low=2,
-            degree_high=6
+            degree_high=6,
+            heartbeat_interval=2
         )
         self._gossipsub = gossipsub
         self._pubsub = Pubsub(self.host, gossipsub)
@@ -56,7 +57,6 @@ class PubSubManager:
         
         # 获取本节点 PeerID 的两种形式：可读字符串用于日志，原始字节用于比较
         my_peer_id_pretty = self.host.get_id().pretty()
-        my_peer_id_bytes = self.host.get_id().to_bytes()
 
         subscription = await self._pubsub.subscribe(self.topic)
         # 从 receive_channel 中迭代消息
@@ -71,60 +71,28 @@ class PubSubManager:
                 print(f"[PUBSUB] ⚠️ 解析消息失败: {e}, 原始数据前50字符: {msg.data[:50]}")
                 continue
 
-            # 安全提取 sender_peer_id (msg.from_id 是 bytes)
-            if hasattr(msg.from_id, 'to_bytes'):
-                sender_peer_id = msg.from_id.pretty()
-            else:
-                sender_peer_id = base64.b64encode(msg.from_id).decode('ascii')
+            sender_peer_id = data.get("sender")
 
-            if msg.from_id == my_peer_id_bytes:
+            # 切换下面两行代码启用|关闭本地回环测试
+            if False:
+            # if sender_peer_id == my_peer_id_pretty:
+                print(f"[PUBSUB] ⚠️ 收到自己发送的消息，忽略: {data.get('msg_type')}")
                 continue
-            callback(data, sender_peer_id)
+
+            await callback(data, sender_peer_id, self) #此处 callback 是 router.route
 
     def setup_router(self) -> Callable:
         """注册所有消息处理器，返回路由函数"""
         router = MessageRouter()
 
-        def handle_audit_request(data: dict, sender: str):
-            print(f"[PUBSUB] 📩 审核请求来自 {sender}: {data.get('payload', {}).get('content', '')[:50]}...")
-            # TODO: 调用本地 AI 审核，发送 audit_response
-
-        def handle_audit_response(data: dict, sender: str):
-            print(f"[PUBSUB] 📩 审核回复来自 {sender}: {data.get('payload', {}).get('verdict')}")
-            # TODO: 收集投票，触发共识
-
-        def handle_post_publish(data: dict, sender: str):
-            print(f"[PUBSUB] 📩 新帖子来自 {sender}: {data.get('payload', {}).get('post_id')}")
-            # TODO: 保存到本地数据库，触发 WebSocket 推送
-
-        def handle_comment_publish(data: dict, sender: str):
-            print(f"[PUBSUB] 📩 新评论来自 {sender}: {data.get('payload', {}).get('comment_id')}")
-            # TODO: 保存到本地数据库
-
-        def handle_sync_request(data: dict, sender: str):
-            print(f"[PUBSUB] 📩 同步请求来自 {sender}")
-            # TODO: 响应全量数据
-
-        def handle_sync_response(data: dict, sender: str):
-            print(f"[PUBSUB] 📩 同步响应来自 {sender}")
-            # TODO: 将接收到的数据保存到本地数据库
-
-        def handle_consensus_request(data: dict, sender: str):
-            print(f"[PUBSUB] 📩 共识请求来自 {sender}: {data.get('payload', {}).get('content_id')}")
-            # TODO: 参与共识投票
-
-        def handle_consensus_vote(data: dict, sender: str):
-            print(f"[PUBSUB] 📩 共识投票来自 {sender}: {data.get('payload', {}).get('verdict')}")
-            # TODO: 收集投票
-
-        router.register(MsgType.AUDIT_REQUEST, handle_audit_request)
-        router.register(MsgType.AUDIT_RESPONSE, handle_audit_response)
-        router.register(MsgType.POST_PUBLISH, handle_post_publish)
-        router.register(MsgType.COMMENT_PUBLISH, handle_comment_publish)
-        router.register(MsgType.SYNC_REQUEST, handle_sync_request)
-        router.register(MsgType.SYNC_RESPONSE, handle_sync_response)
-        router.register(MsgType.CONSENSUS_REQUEST, handle_consensus_request)
-        router.register(MsgType.CONSENSUS_VOTE, handle_consensus_vote)
+        router.register(MsgType.AUDIT_REQUEST, handler.handle_audit_request)
+        router.register(MsgType.AUDIT_RESPONSE, handler.handle_audit_response)
+        router.register(MsgType.POST_PUBLISH, handler.handle_post_publish)
+        router.register(MsgType.COMMENT_PUBLISH, handler.handle_comment_publish)
+        router.register(MsgType.SYNC_REQUEST, handler.handle_sync_request)
+        router.register(MsgType.SYNC_RESPONSE, handler.handle_sync_response)
+        router.register(MsgType.CONSENSUS_REQUEST, handler.handle_consensus_request)
+        router.register(MsgType.CONSENSUS_VOTE, handler.handle_consensus_vote)
 
         print("[PUBSUB] ✅ P2P 消息路由器已初始化，所有处理器已注册")
         return router.route

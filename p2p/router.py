@@ -10,7 +10,7 @@ class MessageRouter:
         """注册消息类型对应的处理函数"""
         self._handlers[msg_type] = handler
 
-    def route(self, data: dict, sender_peer_id: str):
+    async def route(self, data: dict, sender_peer_id: str, pubsub):
         """路由消息到对应处理器"""
         msg_type = data.get('msg_type')
         if not msg_type:
@@ -19,7 +19,7 @@ class MessageRouter:
         handler = self._handlers.get(msg_type)
         if handler:
             try:
-                handler(data, sender_peer_id)
+                await handler(data, sender_peer_id, pubsub)
             except Exception as e:
                 print(f"[ROUTER] ❌ 处理消息 {msg_type} 时出错: {e}")
         else:
