@@ -33,7 +33,7 @@ def get_all_posts(limit=100):
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute(
-        "SELECT post_id, content, nickname, status, final_verdict, created_at FROM posts WHERE status = 'approved' ORDER BY created_at DESC LIMIT ?",
+        "SELECT post_id, content, nickname, status, final_verdict, created_at FROM posts WHERE status = 'pass' ORDER BY created_at DESC LIMIT ?",
         (limit,)
     )
     rows = cursor.fetchall()
@@ -51,7 +51,7 @@ def get_post_by_id(post_id):
     )
     row = cursor.fetchone()
     conn.close()
-    if row and row[3] != "approved":
+    if row and row[3] != "pass":
         return None
     return row
 

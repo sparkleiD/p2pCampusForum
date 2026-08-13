@@ -84,12 +84,11 @@ class Message:
 
 # 3. POST_PUBLISH - 新帖子发布
 # payload = {
-#     "post_id": "xxx",
+#     "post_id": "post_xxx",
 #     "content": "帖子内容",
 #     "nickname": "匿名",
-#     "final_verdict": "approved" | "rejected",
-#     "created_at": "2026-08-09T12:00:00",
-#     "votes_summary": {"pass": 2, "flag": 0, "reject": 1}  # 共识投票统计
+#     "final_verdict": "pass",
+#     "created_at": "2026-08-09T12:00:00"
 # }
 
 # 4. COMMENT_PUBLISH - 新评论发布

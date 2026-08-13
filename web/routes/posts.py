@@ -96,11 +96,28 @@ async def create_post(
     except Exception as e:
         raise HTTPException(500, f"[POSTS] 审核过程出错: {e}")
 
-    # ========== 第6步：更新帖子状态 ==========
+    # ========== 第6步：更新帖子状态 & P2P 推送 ==========
     repo.update_post_status(post_id, final_verdict.verdict, final_verdict.verdict)
 
-    # ========== 第7步：WebSocket推送 ==========
+    # ========== 第7步：P2P & WebSocket推送 ==========
     if final_verdict.verdict == "pass":
+
+        msg = Message(
+            msg_id=str(uuid.uuid4()),
+            msg_type=MsgType.POST_PUBLISH,
+            sender=peer_id,
+            timestamp=datetime.now().isoformat(),
+            payload={
+                "post_id": post_id,
+                "content": content,
+                "nickname": nickname,
+                "final_verdict": "pass",
+                "created_at": datetime.now().isoformat()
+            }
+        )
+        await pubsub.publish(asdict(msg))
+        print(f"[POSTS] 📤 已广播发送请求: {post_id}")
+
         await broadcast_new_post({
             "post_id": post_id,
             "content": content,

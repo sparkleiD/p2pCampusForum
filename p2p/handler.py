@@ -10,12 +10,12 @@ from .coordinator import process_vote
 
 
 async def handle_audit_request(data: dict, sender: str, pubsub):
-    data_payload = data.get('payload', {})
-    print(f"[PUBSUB] 📩 审核请求来自 {sender}: {data_payload.get('content', '')[:50]}...")
+    payload = data.get('payload', {})
+    print(f"[PUBSUB] 📩 审核请求来自 {sender}: {payload.get('content', '')[:50]}...")
 
     try:
         judge = create_judge()
-        response_result = judge.judge(data_payload.get('content'), data_payload.get('nickname'))
+        response_result = judge.judge(payload.get('content'), payload.get('nickname'))
         print(response_result)
     except Exception as e:
         print(f"[PUBSUB] ❌ AI 审核失败: {e}")
@@ -32,7 +32,7 @@ async def handle_audit_request(data: dict, sender: str, pubsub):
             sender=my_peer_id,
             timestamp=datetime.now().isoformat(),
             payload={
-                "content_id": data_payload.get('content_id'),
+                "content_id": payload.get('content_id'),
                 "verdict": response_result,
             }
         )
@@ -47,8 +47,10 @@ async def handle_audit_response(data: dict, sender: str, pubsub):
         process_vote(content_id, sender, verdict)
 
 async def handle_post_publish(data: dict, sender: str, pubsub):
-    print(f"[PUBSUB] 📩 新帖子来自 {sender}: {data.get('payload', {}).get('post_id')}")
-    # TODO: 保存到本地数据库，触发 WebSocket 推送
+    payload = data.get('payload', {})
+    if not sender == pubsub.host.get_id().pretty():
+        repo.save_post(payload.get('post_id'), payload.get('content'), payload.get('nickname'))
+        repo.update_post_status(payload.get('post_id'), payload.get('final_verdict'), payload.get('final_verdict'))
 
 async def handle_comment_publish(data: dict, sender: str, pubsub):
     print(f"[PUBSUB] 📩 新评论来自 {sender}: {data.get('payload', {}).get('comment_id')}")
