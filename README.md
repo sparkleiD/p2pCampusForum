@@ -1,66 +1,172 @@
-# 去中心化校园论坛p2pCampusForum
+# 去中心化校园论坛（p2pCampusForum）README
 
+## 📌 项目简介
+
+**去中心化校园论坛**是一个基于 **libp2p** 和 **AI 自动审核** 的分布式论坛系统。  
+它无需中心服务器，每个运行节点既是服务端也是客户端，通过 P2P 网络自动发现彼此、同步帖子，并利用 AI（云端 API 实现）对内容进行实时审核，实现“发帖即共识，违规即拦截”的透明社区治理。
+
+---
+
+## ✅ 已实现功能
+
+### 核心流程
+
+- **帖子发布**：用户提交内容 → 本地 AI 初步审核 → 若 `reject` 则直接拒绝，否则保存待审核并广播给其他节点请求审核。
+- **AI 审核**：暂仅支持一种模式
+  - `api`：使用 OpenAI 兼容接口（可无缝切换通义千问、DeepSeek、智谱等）
+- **共识投票**：收集其他节点的 AI 审核结果，通过**评分平均**（可修改）得出最终 verdict（`pass` / `reject`）。
+- **帖子广播**：审核通过后，通过 GossipSub 将新帖子广播至全网，其他节点自动保存。
+- **实时推送**：通过 WebSocket 将新帖子实时推送给所有在线前端用户。
+
+### 网络层
+
+- **P2P 节点发现**：基于 mDNS（Zeroconf）自动发现局域网内的其他节点，无需手动配置 IP。
+- **P2P 通信**：使用 libp2p 的 GossipSub 协议实现发布 / 订阅，消息格式统一（`Message` 类）。
+- **固定域名抢占**：尝试注册 `campusforum.local`，实现单入口访问, 但还未实现自动故障转移，仅推荐在稳定连接下试用。
+
+### 数据存储
+
+- **SQLite** 存储帖子、评论、AI 审核日志，支持持久化。
+
+### API 与前端
+
+- **RESTful API**：发帖、查帖列表、帖子详情（含审核记录）、评论管理、数据同步。
+- **Web 界面**：响应式设计，支持发帖、列表浏览、点击查看详情（弹窗显示审核意见）。
+- **评论功能**：可对帖子发表评论，并经过相同的 AI 审核与共识流程（尚未完整集成 P2P 广播，见下文）。
+
+### 配置与扩展
+
+- 通过 `config.py` 和 `.env` 灵活配置 AI 服务商、端口、话题、共识阈值等。
+- 支持多节点运行，各节点数据最终趋于一致（通过同步接口）。
+
+---
+
+## 🚧 未完成 / 待完善的功能
+
+以下是代码中标注 `TODO` 或尚未实现完整的部分：
+
+| 功能模块 | 缺失内容 |
+| --------- | ---------- |
+| **评论** | 评论功能仅留有少量接口，还需后续开发 |
+| **数据同步（SYNC）** | `/api/sync` 接口已提供拉取全量数据，但 `SYNC_REQUEST` / `SYNC_RESPONSE` 消息处理函数未实现实际数据交换与合并逻辑。 |
+| **共识协议完善** | 现有的 `CONSENSUS_REQUEST` / `CONSENSUS_VOTE` 消息类型已定义但未使用，当前共识仅依赖 `AUDIT_RESPONSE`，未实现独立的共识协商。 |
+| **故障转移** | 固定域名抢占中的自动故障转移已被禁用（`AliasServiceListener` 仅打印日志），需启用或提供备选方案。 |
+| **审计日志完整性** | 评论的审核日志已支持，但发帖时若 `flag` 情况未单独处理（目前 `flag` 与 `pass` 同样进入共识）。 |
+| **消息签名与验证** | 当前消息未做签名，存在伪造风险。 |
+| **错误处理与重试** | 网络异常、AI 超时等场景的处理尚不够健壮。 |
+
+---
+
+## 🚀 主要用法
+
+### 1. 环境要求
+
+- Python 3.11+ （推荐 3.11.9）
+
+### 2. 安装依赖
+
+```bash
+pip install -r requirements.txt
+```
+
+### 3. 配置
+
+- 编辑 `.env` 文件，设置 `AI_API_KEY`、`AI_API_BASE_URL`（若使用 API 模式）。
+- 编辑 `config.py` 可调整端口、AI 模式、超时时间等。
+
+### 4. 启动节点
+
+```bash
+python main.py [--ai-mode api|local] [--port 9099] [--p2p-port 9001]
+```
+
+- `--ai-mode`：覆盖配置文件中的 AI 模式。（目前版本请勿使用）
+- `--port`：Web 服务端口（默认 9099）。
+- `--p2p-port`：P2P 监听端口（默认 9001）。
+
+启动后终端会显示节点的 PeerID 和访问地址。
+
+### 5. 访问论坛
+
+- 浏览器打开 `http://localhost:9099` 或 `http://campusforum.local:9099`（如果成功抢占固定域名）。
+- 页面会显示发帖表单和已有帖子列表。
+
+### 6. 发帖
+
+- 输入内容（和可选昵称），点击“发布”。
+- 系统立即进行 AI 审核，若通过则广播并上屏，若拒绝则提示原因。
+
+### 7. 多节点运行
+
+- 在同一局域网的其他机器上同样启动节点（使用不同的端口），它们会自动通过 mDNS 发现彼此。
+- 每个节点都会收到其他节点发布的帖子，并参与审核投票。
+
+---
+
+## 📁 项目结构
+
+```txt
 p2pCampusForum/
-│
-├── main.py                          # 程序入口，启动 P2P + Web 服务器
-├── config.py                        # 配置文件（API密钥、端口、话题等）
-├── requirements.txt                 # Python 依赖清单
-├── .env                             # 环境变量（API_KEY 等，不提交 Git）
-├── test_ai.py                       # AI 配置测试工具
-├── test_prompt.py                   # 提示词测试工具
-│
-├── ai/                              # AI 审核模块
-│   ├── __init__.py
-│   ├── base.py                      # Verdict 数据类 + BaseJudge 基类
-│   ├── factory.py                   # 根据 AI_MODE 创建审核器
-│   ├── api/                         # 云端 API 审核器
-│   │   ├── __init__.py
-│   │   └── openai_compat_judge.py   # OpenAI 兼容格式审核器（通义千问等）
-│   └── local/                       # 本地模型审核器
-│       ├── __init__.py
-│       └── ollama_judge.py          # Ollama 本地模型审核器
-│
-├── p2p/                             # P2P 网络模块
-│   ├── __init__.py
-│   ├── network.py                   # libp2p Host 创建与管理
-│   ├── discovery.py                 # mDNS 服务注册（含固定域名抢占）
-│   ├── protocol.py                  # 消息格式定义（Message + MsgType）
-│   ├── pubsub.py                    # PubSub 发布订阅（GossipSub）
-│   ├── router.py                    # P2P 消息处理路由
-│   └── handler.py                   # P2P 消息处理回调函数集合
-│
-├── storage/                         # 数据存储模块
-│   ├── __init__.py
-│   ├── database.py                  # SQLite 连接 + 建表（posts/audit_log/comments）
-│   └── repositories.py              # CRUD 操作（帖子/评论/审核日志）
-│
-├── consensus/                       # 共识引擎模块
-│   ├── __init__.py
-│   └── engine.py                    # 多数投票共识（majority_vote）
-│
-├── web/                             # Web 服务层
-│   ├── __init__.py
-│   ├── server.py                    # FastAPI 主应用（挂载路由 + 静态文件）
-│   ├── websocket.py                 # WebSocket 连接管理 + 广播函数
-│   └── routes/                      # API 路由
-│       ├── __init__.py
-│       ├── posts.py                 # 帖子 API（发帖/查帖/详情）
-│       ├── comments.py              # 评论 API（发评论/查评论）
-│       └── sync.py                  # 数据同步 API（新节点拉取历史数据）
-│
-├── frontend/                        # 前端静态文件
-│   ├── index.html                   # 主页面
-│   ├── css/
-│   │   └── style.css                # 样式（含响应式设计）
-│   └── js/
-│       ├── app.js                   # 前端主逻辑（发帖/列表/详情弹窗）
-│       └── websocket.js             # WebSocket 客户端（自动连接 + 重连）
-│
-├── utils/                           # 工具模块
-│   ├── __init__.py
-│   └── logger.py                    # 日志配置
-│
-├── data/                            # 运行时数据（不提交 Git）
-│   └── posts.db                     #  SQLite 数据库文件
-│
-└── venv/                            # Python 虚拟环境（不提交 Git）
+├── main.py                 # 入口，启动 Web + P2P
+├── config.py               # 全局配置
+├── .env                    # 敏感变量（不提交）
+├── ai/                     # AI 审核器
+│   ├── base.py             # 基类与 Verdict 数据类
+│   ├── factory.py          # 工厂方法创建审核器
+│   ├── api/                # 云端 API 审核
+│   └── local/              # Ollama 本地审核
+├── p2p/                    # P2P 网络
+│   ├── network.py          # libp2p Host 创建
+│   ├── discovery.py        # mDNS 服务发现
+│   ├── protocol.py         # 消息格式定义
+│   ├── pubsub.py           # GossipSub 封装
+│   ├── router.py           # 消息路由
+│   ├── handler.py          # 各消息类型处理器
+│   └── coordinator.py      # 投票会话管理（等待共识）
+├── consensus/              # 共识引擎
+│   └── engine.py           # 评分平均算法
+├── storage/                # 数据层
+│   ├── database.py         # SQLite 初始化
+│   └── repositories.py     # CRUD 操作
+├── web/                    # Web 服务
+│   ├── server.py           # FastAPI 应用
+│   ├── websocket.py        # WebSocket 连接管理
+│   └── routes/             # API 路由（posts/comments/sync）
+├── frontend/               # 静态文件
+│   ├── index.html
+│   ├── css/style.css
+│   └── js/ (app.js, websocket.js)
+└── data/                   # 运行时数据库（自动生成）
+    └── posts.db
+```
+
+---
+
+## 🧪 测试与调试
+
+- **测试 AI 配置**：运行 `test_ai.py`（需自行创建）验证审核器是否正常工作。
+- **查看日志**：控制台会打印详细的消息收发、审核结果和共识过程。
+- **检查数据库**：使用 SQLite 客户端查看 `data/posts.db` 中的表数据。
+- **临时调试代码位置**：`pubsub.py line 77 & 78` -> 是否接收本机p2p广播（真实环境启用 line 78） | `openai_compat_judge.py line 38` -> 是否真正连接api（真实环境注释 line 38）
+
+---
+
+## 🤝 贡献与扩展
+
+本项目已完成核心功能骨架，欢迎围绕以下方向进行完善：
+
+- 实现评论的 P2P 同步与 WebSocket 推送。
+- 完善数据同步机制，支持新节点自动拉取历史数据。
+- 增加消息签名与加密，提升安全性。
+- 优化前端 UI/UX，增加评论展示和交互。
+- 设计更复杂的共识算法（如 PBFT）或引入激励机制。
+
+---
+
+## 📄 许可证
+
+本项目仅供学习交流使用，未指定许可证，请遵守相关法律法规。
+
+---
+
+**感谢使用去中心化校园论坛！** 如有问题，欢迎提 Issue 或 PR。
