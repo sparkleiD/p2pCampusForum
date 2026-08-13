@@ -10,10 +10,10 @@ from fastapi import APIRouter, Form, HTTPException, Request
 
 from storage import repositories as repo
 from ai.factory import create_judge
-from consensus.engine import majority_vote
 from p2p.protocol import Message, MsgType
-from config import PUBSUB_TOPIC
 from web.websocket import broadcast_new_post
+from p2p.coordinator import create_session, wait_for_consensus
+from config import CONSENSUS_THRESHOLD, CONSENSUS_TIMEOUT_SECONDS
 
 router = APIRouter(prefix="/api/posts", tags=["posts"])
 
@@ -29,7 +29,7 @@ async def create_post(
         judge = create_judge()
         local_result = judge.judge(content,nickname)
     except Exception as e:
-        print(f"❌ AI 审核失败: {e}")
+        print(f"[POSTS] ❌ AI 审核失败: {e}")
         raise HTTPException(
             status_code=503,
             detail="AI 审核服务暂时不可用，请稍后重试"
@@ -61,6 +61,8 @@ async def create_post(
     )
 
     # ========== 第4步：广播审核请求给其他节点 ==========
+    create_session(post_id)
+
     pubsub = request.app.state.pubsub
     peer_id = request.app.state.peer_id
 
@@ -71,41 +73,49 @@ async def create_post(
             sender=peer_id,
             timestamp=datetime.now().isoformat(),
             payload={
-                "post_id": post_id,
+                "content_id": post_id,
                 "content": content,
                 "nickname": nickname
             }
         )
         await pubsub.publish(asdict(msg))
-        print(f"📤 已广播审核请求: {post_id}")
+        print(f"[POSTS] 📤 已广播审核请求: {post_id}")
     else:
-        print(f"⚠️ P2P 未启用，仅使用本地审核: {post_id}")
+        print(f"[POSTS] ⚠️ P2P 未启用，仅使用本地审核: {post_id}")
 
     # ========== 第5步：收集审核结果并共识 ==========
-    verdicts = [local_result]
-    consensus_result = majority_vote(verdicts)
-    final_verdict = consensus_result["final_verdict"]
+    try:
+        # 一行调用，阻塞等待审核结果(返回仅含 pass|reject 两种的 Verdict 数据)
+        final_verdict = await wait_for_consensus(
+            content_id=post_id,
+            content=content,
+            nickname=nickname,
+            timeout_seconds=CONSENSUS_TIMEOUT_SECONDS,
+            consensus_threshold=CONSENSUS_THRESHOLD
+        )
+    except Exception as e:
+        raise HTTPException(500, f"[POSTS] 审核过程出错: {e}")
 
     # ========== 第6步：更新帖子状态 ==========
-    repo.update_post_status(post_id, final_verdict, final_verdict)
+    repo.update_post_status(post_id, final_verdict.verdict, final_verdict.verdict)
 
     # ========== 第7步：WebSocket推送 ==========
-    if final_verdict == "approved":
+    if final_verdict.verdict == "pass":
         await broadcast_new_post({
             "post_id": post_id,
             "content": content,
             "nickname": nickname,
-            "final_verdict": final_verdict,
+            "final_verdict": final_verdict.verdict,
             "created_at": datetime.now().isoformat()
         })
-        print(f"📡 WebSocket 已推送新帖子: {post_id}")
+        print(f"[POSTS] 📡 WebSocket 已推送新帖子: {post_id}")
 
     return {
         "post_id": post_id,
-        "status": final_verdict,
-        "votes": consensus_result["votes"],
-        "details": consensus_result["details"],
-        "message": "帖子发布成功" if final_verdict == "approved" else "帖子未通过审核"
+        "status": final_verdict.verdict,
+        "votes": "votes",
+        "details": "details",
+        "message": "帖子发布成功" if final_verdict == "pass" else "帖子未通过审核"
     }
 
 

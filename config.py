@@ -30,5 +30,6 @@ P2P_SERVICE_TYPE = "_p2p._tcp.local."
 PUBSUB_TOPIC = "/campusforum/posts"
 
 # 共识配置
-CONSENSUS_RETRY_COUNT = 1  # 分歧时最多重审次数
-CONSENSUS_FLAG_THRESHOLD = 2  # 多少票存疑视为存疑
+CONSENSUS_RETRY_COUNT = 1  # 分歧时最多重审次数(弃)
+CONSENSUS_THRESHOLD = 1  # 正常判定流程最少需要票数阈值
+CONSENSUS_TIMEOUT_SECONDS = 10 # 共识投票开放窗口长度(秒)

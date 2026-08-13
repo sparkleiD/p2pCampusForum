@@ -26,12 +26,3 @@ def create_judge() -> BaseJudge:
 
     else:
         raise ValueError(f"不支持的 AI_MODE: {AI_MODE}, 请选择 'api' 或 'local'")
-
-
-def collect_verdicts_from_peers(post_id: str) -> List[dict]:
-    """
-    通过P2P网络收集其他节点的审核结果(由p2p模块负责通信).
-    此函数仅作为接口说明,实际实现在p2p/中.
-    """
-    # 待 p2p 模块实现
-    pass

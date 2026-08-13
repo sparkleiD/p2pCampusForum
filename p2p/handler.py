@@ -5,6 +5,8 @@ from fastapi import HTTPException
 from datetime import datetime
 from ai.factory import create_judge
 from .protocol import Message, MsgType
+from storage import repositories as repo
+from .coordinator import process_vote
 
 
 async def handle_audit_request(data: dict, sender: str, pubsub):
@@ -37,8 +39,12 @@ async def handle_audit_request(data: dict, sender: str, pubsub):
         await pubsub.publish(asdict(msg))
 
 async def handle_audit_response(data: dict, sender: str, pubsub):
-    print(f"[PUBSUB] 📩 审核回复来自 {sender}: {data.get('payload', {}).get('verdict')}")
-    # TODO: 收集投票，触发共识
+    payload = data.get('payload', {})
+    content_id = payload.get('content_id')
+    verdict = payload.get('verdict') # Verdict 类型
+    if content_id and verdict:
+        # 只是存入投票，不涉及任何决策
+        process_vote(content_id, sender, verdict)
 
 async def handle_post_publish(data: dict, sender: str, pubsub):
     print(f"[PUBSUB] 📩 新帖子来自 {sender}: {data.get('payload', {}).get('post_id')}")
